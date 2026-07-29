@@ -1,0 +1,19 @@
+configuration:
+  server_url:
+    name: Connector server URL
+    description: Outbound ws:// or wss:// server origin, for example ws://example.com:5880. The connector appends /ha/connect automatically.
+  token:
+    name: Connector token
+    description: Token sent in the first register frame. Keep this secret.
+  allow_insecure_ws:
+    name: Allow insecure WebSocket
+    description: Permit ws:// without TLS. Enable only for development.
+  access_mode:
+    name: Access mode
+    description: read_only permits reads; control also permits service calls; admin permits arbitrary supported API commands.
+  enable_ha_websocket:
+    name: Enable Home Assistant WebSocket bridge
+    description: Permit remote Home Assistant WebSocket API sessions through the connector.
+  log_level:
+    name: Log level
+    description: Connector logging verbosity.
