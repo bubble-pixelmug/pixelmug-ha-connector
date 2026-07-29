@@ -17,7 +17,7 @@ It allows approved remote clients to access a limited Home Assistant Core API br
 Set `server_url` to the connector server origin only, for example:
 
 ```yaml
-server_url: "wss://example.com:5880"
+server_url: "wss://example.com:5080"
 ```
 
 The add-on appends `/ha/connect` automatically.
