@@ -8,7 +8,7 @@ The add-on does not open inbound ports, does not require host networking, and do
 
 | Option | Description |
 |---|---|
-| `server_url` | Connector server origin, for example `wss://example.com:5880`. The add-on appends `/ha/connect` automatically. |
+| `server_url` | Connector server origin, for example `wss://example.com:5080`. The add-on appends `/ha/connect` automatically. |
 | `token` | Registration token sent to the connector service. Keep it secret. |
 | `allow_insecure_ws` | Allows `ws://` without TLS. Use only for development. |
 | `access_mode` | Access policy: `read_only`, `control`, or `admin`. |
