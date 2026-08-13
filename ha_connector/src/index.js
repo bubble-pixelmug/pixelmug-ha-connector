@@ -6,23 +6,8 @@ const OPTIONS_PATH = "/data/options.json";
 const HA_REST_ORIGIN = "http://supervisor";
 const HA_WS_URL = "ws://supervisor/core/websocket";
 const CONNECTOR_WS_PATH = "/ha/connect";
-const CONNECTOR_VERSION = "0.1.1";
+const CONNECTOR_VERSION = "0.2.0";
 const HA_WS_MESSAGE_CHUNK_BYTES = 48 * 1024;
-
-const READ_ONLY_WS_TYPES = new Set([
-  "get_config",
-  "get_panels",
-  "get_services",
-  "get_states",
-  "ping",
-  "subscribe_events",
-  "unsubscribe_events",
-]);
-
-const CONTROL_WS_TYPES = new Set([
-  ...READ_ONLY_WS_TYPES,
-  "call_service",
-]);
 
 class ConnectorError extends Error {
   constructor(code, message, status = undefined) {
@@ -79,10 +64,9 @@ function normalizeOptions(raw) {
     serverUrl: normalizeServerUrl(raw.server_url),
     token: String(raw.token ?? ""),
     allowInsecureWs: Boolean(raw.allow_insecure_ws),
-    accessMode: ["read_only", "control", "admin"].includes(raw.access_mode)
-      ? raw.access_mode
-      : "read_only",
     enableHaWebSocket: Boolean(raw.enable_ha_websocket),
+    enableHaRest: Boolean(raw.enable_ha_rest),
+    allowHaRestWrite: Boolean(raw.allow_ha_rest_write),
     logLevel: ["debug", "info", "warn", "error"].includes(raw.log_level)
       ? raw.log_level
       : "info",
@@ -138,14 +122,6 @@ function validateEventId(value) {
   return value;
 }
 
-function validateEntityId(value) {
-  const entityId = String(value ?? "");
-  if (!/^[a-z0-9_]+\.[a-z0-9_]+$/i.test(entityId)) {
-    throw new ConnectorError("invalid_entity_id", "entityId has an invalid format");
-  }
-  return entityId;
-}
-
 function validateSessionId(value) {
   const sessionId = String(value ?? "");
   if (!/^[A-Za-z0-9._:-]{1,128}$/.test(sessionId)) {
@@ -183,16 +159,19 @@ async function readLimitedBody(response, maxBytes) {
   if (total === 0) return null;
   const buffer = Buffer.concat(chunks, total);
   const contentType = response.headers.get("content-type") ?? "";
-  const text = buffer.toString("utf8");
-
   if (contentType.includes("application/json")) {
+    const text = buffer.toString("utf8");
     try {
       return JSON.parse(text);
     } catch {
       return text;
     }
   }
-  return text;
+  if (contentType.startsWith("text/")) return buffer.toString("utf8");
+  return {
+    encoding: "base64",
+    data: buffer.toString("base64"),
+  };
 }
 
 class HaWebSocketSession {
@@ -305,24 +284,7 @@ class HaWebSocketSession {
       throw new ConnectorError("payload_too_large", "HA WebSocket message exceeds the size limit");
     }
 
-    this.enforceAccessMode(message);
     this.socket.send(JSON.stringify(message));
-  }
-
-  enforceAccessMode(message) {
-    const type = String(message.type ?? "");
-    if (!type) {
-      throw new ConnectorError("invalid_ha_ws_message", "HA WebSocket command is missing type");
-    }
-
-    if (this.options.accessMode === "admin") return;
-    if (this.options.accessMode === "control" && CONTROL_WS_TYPES.has(type)) return;
-    if (this.options.accessMode === "read_only" && READ_ONLY_WS_TYPES.has(type)) return;
-
-    throw new ConnectorError(
-      "ha_ws_command_forbidden",
-      `access_mode=${this.options.accessMode} does not allow HA WebSocket command: ${type}`,
-    );
   }
 
   close(code = 1000, reason = "Closed") {
@@ -497,10 +459,6 @@ class Connector {
         return { pong: true, timestamp: new Date().toISOString() };
       case "ha_rest":
         return this.handleHaRest(data);
-      case "ha_call_service":
-        return this.handleHaCallService(data);
-      case "set_light":
-        return this.handleSetLight(data);
       case "ha_ws_open":
         return this.handleHaWsOpen(data);
       case "ha_ws_send":
@@ -513,6 +471,9 @@ class Connector {
   }
 
   async handleHaRest(data) {
+    if (!this.options.enableHaRest) {
+      throw new ConnectorError("ha_rest_disabled", "Home Assistant REST tunnel is disabled");
+    }
     const method = String(data.method ?? "GET").toUpperCase();
     const path = String(data.path ?? "");
 
@@ -599,56 +560,16 @@ class Connector {
       throw new ConnectorError("path_forbidden", "Only Home Assistant Core API paths under /api/ are allowed");
     }
 
-    const allowedMethods = this.options.accessMode === "read_only"
-      ? new Set(["GET", "HEAD"])
-      : this.options.accessMode === "control"
-        ? new Set(["GET", "HEAD", "POST"])
-        : new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]);
+    const allowedMethods = this.options.allowHaRestWrite
+      ? new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"])
+      : new Set(["GET", "HEAD"]);
 
     if (!allowedMethods.has(method)) {
       throw new ConnectorError(
         "method_forbidden",
-        `access_mode=${this.options.accessMode} does not allow ${method} requests`,
+        `allow_ha_rest_write=false does not allow ${method} requests`,
       );
     }
-  }
-
-  async handleHaCallService(data) {
-    if (this.options.accessMode === "read_only") {
-      throw new ConnectorError("access_forbidden", "read_only mode does not allow service calls");
-    }
-
-    const domain = String(data.domain ?? "");
-    const service = String(data.service ?? "");
-    if (!/^[a-z0-9_]+$/.test(domain) || !/^[a-z0-9_]+$/.test(service)) {
-      throw new ConnectorError("invalid_service", "domain or service has an invalid format");
-    }
-
-    return this.handleHaRest({
-      method: "POST",
-      path: `/api/services/${domain}/${service}`,
-      body: data.serviceData ?? {},
-    });
-  }
-
-  async handleSetLight(data) {
-    const entityId = validateEntityId(data.entityId);
-    if (!entityId.startsWith("light.")) {
-      throw new ConnectorError("invalid_light_entity", "set_light only allows light.* entities");
-    }
-
-    const state = String(data.state ?? "").toLowerCase();
-    if (!["on", "off"].includes(state)) {
-      throw new ConnectorError("invalid_light_state", "state must be on or off");
-    }
-
-    const result = await this.handleHaCallService({
-      domain: "light",
-      service: state === "on" ? "turn_on" : "turn_off",
-      serviceData: { entity_id: entityId },
-    });
-
-    return { entityId, state, ha: result };
   }
 
   async handleHaWsOpen(data) {
@@ -778,7 +699,11 @@ class Connector {
         online: true,
         coreReachable,
         connectorVersion: CONNECTOR_VERSION,
-        accessMode: this.options.accessMode,
+        channels: {
+          haWebSocket: this.options.enableHaWebSocket,
+          haRest: this.options.enableHaRest,
+          haRestWrite: this.options.enableHaRest && this.options.allowHaRestWrite,
+        },
         activeRequests: this.activeRequests,
         haWebSocketSessions: this.haSessions.size,
         timestamp: new Date().toISOString(),
@@ -884,7 +809,9 @@ async function main() {
   });
 
   logger.info(`PixelMug HA Connector ${CONNECTOR_VERSION}`);
-  logger.info(`Access mode: ${options.accessMode}`);
+  logger.info(
+    `Channels: HA WebSocket=${options.enableHaWebSocket}, HA REST=${options.enableHaRest}, HA REST write=${options.allowHaRestWrite}`,
+  );
   logger.warn(
     options.serverUrl.startsWith("ws://")
       ? "Using insecure ws:// transport; tokens and data may be exposed. Use wss:// in production."

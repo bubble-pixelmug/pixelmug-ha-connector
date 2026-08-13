@@ -11,8 +11,9 @@ The add-on does not open inbound ports, does not require host networking, and do
 | `server_url` | Connector server origin, for example `wss://example.com:5080`. The add-on appends `/ha/connect` automatically. |
 | `token` | Registration token sent to the connector service. Keep it secret. |
 | `allow_insecure_ws` | Allows `ws://` without TLS. Use only for development. |
-| `access_mode` | Access policy: `read_only`, `control`, or `admin`. |
 | `enable_ha_websocket` | Enables Home Assistant WebSocket API bridging. |
+| `enable_ha_rest` | Enables Home Assistant REST API bridging. |
+| `allow_ha_rest_write` | Allows POST, PUT, PATCH and DELETE through the REST tunnel. When false, only GET and HEAD are allowed. |
 | `log_level` | Connector log verbosity: `debug`, `info`, `warn`, or `error`. |
 | `request_timeout_ms` | Timeout for connector, REST, and WebSocket operations. |
 | `max_payload_bytes` | Maximum message/API response size. Valid range: 65,536 to 16,777,216 bytes. |
@@ -29,19 +30,20 @@ Example:
 server_url: "wss://example.com:5880"
 token: "replace-with-your-token"
 allow_insecure_ws: false
-access_mode: "control"
 enable_ha_websocket: true
+enable_ha_rest: true
+allow_ha_rest_write: false
 ```
 
 `server_url` should not include `/ha/connect`. The add-on normalizes the configured origin and appends that path in code.
 
-## Access Modes
+## Channel Permissions
 
-`read_only` allows read-only REST methods and read/subscription Home Assistant WebSocket commands.
+Permissions operate at the transport level and do not depend on Home Assistant domains, services, registries, entities, or WebSocket command types.
 
-`control` allows everything in `read_only`, plus service calls. This is the recommended mode when remote clients need to control Home Assistant devices.
+`enable_ha_websocket` exposes an opaque authenticated Home Assistant WebSocket session. When enabled, the Connector forwards any valid JSON object without interpreting its `type`. User, home and operation authorization must happen in the Connector service before routing.
 
-`admin` allows all supported bridge commands and REST methods. Use it only for trusted development or tightly controlled deployments.
+`enable_ha_rest` enables the generic REST tunnel under Home Assistant Core `/api/`. With `allow_ha_rest_write: false`, only GET and HEAD are accepted. Enable REST writes only when the upstream service applies appropriate authorization.
 
 ## Local Installation
 
@@ -84,6 +86,6 @@ Use high-entropy, revocable connector tokens. Device-side connector credentials 
 
 The server should bind users, homes, and connector instances explicitly. Do not route access using only a global shared token.
 
-Prefer `read_only` by default and switch to `control` only when remote control is needed. Avoid exposing `admin` to ordinary clients.
+Disable unused channels. Keep `allow_ha_rest_write` false unless REST mutations are required. Enabling the WebSocket tunnel permits both reads and mutations at the transport layer, so the upstream service must authorize access before routing requests.
 
 Do not log `SUPERVISOR_TOKEN` or registration tokens.

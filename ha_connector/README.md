@@ -8,7 +8,7 @@ It allows approved remote clients to access a limited Home Assistant Core API br
 
 - Outbound-only WebSocket connection to the PixelMug connector service.
 - Uses the Home Assistant Supervisor token inside the add-on.
-- Supports controlled Home Assistant REST API calls.
+- Supports optionally read-only or read/write Home Assistant REST tunneling.
 - Supports Home Assistant WebSocket sessions for state reads, subscriptions, and service calls.
 - Includes reconnects, heartbeat checks, request timeouts, payload limits, and concurrency limits.
 
@@ -22,11 +22,13 @@ server_url: "wss://example.com:5080"
 
 The add-on appends `/ha/connect` automatically.
 
-Use `access_mode` to control what remote clients can do:
+Channel permissions are deliberately coarse-grained and business-agnostic:
 
-- `read_only`: read and subscribe only.
-- `control`: read, subscribe, and call Home Assistant services.
-- `admin`: allow all supported bridge commands.
+- `enable_ha_websocket` enables or disables the opaque HA WebSocket tunnel.
+- `enable_ha_rest` enables or disables the HA REST tunnel.
+- `allow_ha_rest_write` controls whether the REST tunnel accepts methods other than GET and HEAD.
+
+The Connector does not inspect HA WebSocket command types or implement entity/service shortcuts. Authorize users and homes before the server routes requests to a Connector.
 
 Use `wss://` in production. Enable `allow_insecure_ws` only for development.
 

@@ -1,6 +1,6 @@
 name: "PixelMug HA Connector"
 description: "Outbound WebSocket connector that exposes a controlled Home Assistant Core API bridge."
-version: "0.1.1"
+version: "0.2.0"
 slug: "pixelmug_ha_connector"
 stage: experimental
 startup: application
@@ -14,8 +14,9 @@ options:
   server_url: "ws://your-server-host:port"
   token: null
   allow_insecure_ws: true
-  access_mode: "control"
   enable_ha_websocket: true
+  enable_ha_rest: true
+  allow_ha_rest_write: false
   log_level: "info"
   request_timeout_ms: 15000
   max_payload_bytes: 4194304
@@ -29,8 +30,9 @@ schema:
   server_url: str
   token: password
   allow_insecure_ws: bool
-  access_mode: "list(read_only|control|admin)"
   enable_ha_websocket: bool
+  enable_ha_rest: bool
+  allow_ha_rest_write: bool
   log_level: "list(debug|info|warn|error)"
   request_timeout_ms: "int(1000,120000)"
   max_payload_bytes: "int(65536,16777216)"

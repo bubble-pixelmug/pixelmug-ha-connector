@@ -8,12 +8,15 @@ configuration:
   allow_insecure_ws:
     name: Allow insecure WebSocket
     description: Permit ws:// without TLS. Enable only for development.
-  access_mode:
-    name: Access mode
-    description: read_only permits reads; control also permits service calls; admin permits arbitrary supported API commands.
   enable_ha_websocket:
     name: Enable Home Assistant WebSocket bridge
-    description: Permit remote Home Assistant WebSocket API sessions through the connector.
+    description: Permit opaque remote Home Assistant WebSocket API sessions. The upstream service must authorize access.
+  enable_ha_rest:
+    name: Enable Home Assistant REST bridge
+    description: Permit remote Home Assistant Core REST API requests through the connector.
+  allow_ha_rest_write:
+    name: Allow Home Assistant REST writes
+    description: Permit POST, PUT, PATCH and DELETE. When disabled, only GET and HEAD are accepted.
   log_level:
     name: Log level
     description: Connector logging verbosity.
